@@ -13,6 +13,10 @@ enum Moment {
 model User {
   id           String        @id @default(cuid())
   email        String        @unique
+  name          String?
+  sessionVersion Int @default(0)
+  resetTokenHash String? @unique
+  resetExpiresAt DateTime?
   passwordHash String
   role         String        @default("patient")
   createdAt    DateTime      @default(now())

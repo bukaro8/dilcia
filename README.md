@@ -4,18 +4,23 @@ Aplicación privada para registrar y revisar glucosa en mmol/L. Interfaz complet
 
 ## Puesta en marcha local
 
-1. Copia `.env.example` a `.env`. Establece una contraseña local para PostgreSQL y un secreto aleatorio de sesión (`openssl rand -hex 32`). La URL del ejemplo usa `127.0.0.1` para ejecutar Next.js en tu equipo.
-2. Ejecuta `docker compose -f docker-compose.yml -f docker-compose.local.yml up -d db`, `npm ci` y `npx prisma migrate deploy`. PostgreSQL se publica solo en `127.0.0.1:5432` y persiste en el volumen `postgres_data`.
+1. Copia `.env.example` a `.env`. Usa la misma contraseña local en `POSTGRES_PASSWORD` y en `DATABASE_URL`. Genera un secreto aleatorio de sesión (`openssl rand -hex 32`). La URL del ejemplo usa `127.0.0.1` para ejecutar Next.js en tu equipo.
+2. Ejecuta `docker compose -f docker-compose.local.yml up -d db`, `npm ci` y `npx prisma migrate deploy`. PostgreSQL se publica solo en `127.0.0.1:5432` y persiste en el volumen `postgres_data`.
 3. Crea la cuenta inicial sin credenciales predeterminadas: `ADMIN_EMAIL=correo@example.com ADMIN_PASSWORD='una-frase-larga-de-al-menos-14-caracteres' npm run db:seed`. El inicializador lee `DATABASE_URL` de `.env` y se niega a sobrescribir una base de datos con usuarios existentes. No reutilices la contraseña del ejemplo.
 4. Ejecuta `npm run dev` y abre `http://localhost:3000`.
 
-## Despliegue en Coolify / Docker Compose
+## Coolify con PostgreSQL como recurso independiente
 
-1. Crea una aplicación desde `bukaro8/dilcia` con la estrategia Docker Compose, directorio base `/` y archivo `/docker-compose.yml`. Coolify construirá el servicio `app` con el Dockerfile de la raíz. En Domains, configura HTTPS para `app` con puerto interno `3000`. El dominio debe resolver al servidor y tener un certificado de confianza para los dispositivos de tu red.
-2. Define `POSTGRES_PASSWORD` (usa `openssl rand -hex 32` para que sea compatible con la URL), `SESSION_SECRET` (genera con `openssl rand -base64 48`) y `APP_URL` con el dominio HTTPS. Guarda las variables como secretos de Coolify; no las añadas al repositorio.
-3. Conserva el volumen `postgres_data` y despliega. La base de datos espera su health check. El contenedor de aplicación también espera `pg_isready`, ejecuta `prisma migrate deploy` y solo entonces inicia Next.js. Un error de migración detiene el contenedor. Nunca se ejecuta `db push` ni se corre un seed en el arranque.
-4. Tras el primer despliegue, crea la cuenta inicial desde una sesión administrativa controlada ejecutando el inicializador con variables temporales. Por ejemplo, `docker compose exec -e ADMIN_EMAIL=... -e ADMIN_PASSWORD=... app npm run db:seed`. No dejes esas variables guardadas tras el proceso.
-5. Configura las copias externas cifradas de PostgreSQL según la política de tu servidor. Un ejemplo de respaldo: `docker compose exec -T db pg_dump -U glucosa glucosa | gzip > backups/glucosa-$(date -u +%F-%H%M).sql.gz`. Guarda `backups/` fuera del repositorio y aplica retención limitada. Restauración en una base vacía: `gunzip -c respaldo.sql.gz | docker compose exec -T db psql -U glucosa glucosa`. Haz primero una copia del estado actual y valida la restauración en una instancia aislada.
+Usa `/docker-compose.yml` como archivo Compose, con directorio base `/`. Este archivo construye únicamente GlucoMi. Configura el dominio HTTPS en el servicio `app`, puerto interno `3000`.
+
+1. En tu PostgreSQL existente, usa una base dedicada a GlucoMi con un usuario que pueda ejecutar sus migraciones.
+2. En Coolify, define `DATABASE_URL` con la URL completa de esa base, `SESSION_SECRET` con un valor aleatorio de al menos 32 caracteres y `APP_URL` con la URL pública HTTPS. No hacen falta `POSTGRES_DB` ni `POSTGRES_PASSWORD` en el recurso de la app.
+3. Si la URL usa el nombre interno del contenedor de PostgreSQL, verifica que ambos recursos estén en una red compartida de Coolify. Para el Compose, revisa **Advanced → Docker Compose → Connect to Predefined Network**. Usa la URL interna con el nombre de host indicado por el recurso de PostgreSQL, ajustada al nombre de la base dedicada.
+4. Despliega y comprueba `/api/health`. El contenedor espera la conexión y ejecuta `prisma migrate deploy` antes de iniciar la app. Crea la cuenta de prueba desde **Crear una cuenta**.
+
+## Copias de seguridad
+
+Configura las copias periódicas y la retención en el recurso de PostgreSQL. Para probar una restauración, usa una base aislada y verifica su contenido antes de sustituir la base activa. Guarda las copias cifradas fuera del repositorio.
 
 ## Migraciones y recuperación
 
